@@ -1,3 +1,4 @@
 pydantic
 dotenv
 black
+google-adk
