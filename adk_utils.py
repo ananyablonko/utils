@@ -1,6 +1,7 @@
 import asyncio
 from typing import Optional, cast, AsyncGenerator, Callable, Any, TypedDict
 from pydantic import BaseModel, Field, PrivateAttr
+from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents import BaseAgent, SequentialAgent
 from google.adk.runners import Runner
 from google.adk.sessions import Session, InMemorySessionService
@@ -29,7 +30,7 @@ class AgentTester(BaseModel):
     agent: BaseAgent
     initial_state: Optional[dict] = Field(default_factory=dict)
     check: Callable = lambda e: e.is_final_response()
-    extract: Callable = lambda e: e.content.parts[0].text
+    extract: Callable = lambda e: e.content.parts[0].text if e.content else e.actions.state_delta
     _session: Optional[Session] = PrivateAttr(default=None)
 
     def model_post_init(self, context: Any) -> None:
@@ -84,3 +85,14 @@ class SingleValue[T](BaseModel):
 
     def model_dump(self, *args, **kwargs) -> T:
         return self.value
+    
+
+def should_run_agent(keys: list[str], callback_context: CallbackContext) -> Optional[types.Content]:
+    f"""
+    USAGE
+    -----
+    before_agent_callback=functools.partial({should_run_agent.__name__}, key=expected_key_to_be_in_session)
+    """
+    for key in keys:
+        if key not in callback_context.state:
+            return types.Content(role="model", parts=[types.Part(text=f"Agent {callback_context.agent_name} skipped: {key} not in state!")])

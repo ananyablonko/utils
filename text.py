@@ -21,7 +21,6 @@ def clean_hebrew(text: str) -> str:
     return unicodedata.normalize("NFC", text).strip()
 
 
-
 def prettify(obj):
     return black.format_str(str(obj), mode=black.Mode(line_length=120))
 
