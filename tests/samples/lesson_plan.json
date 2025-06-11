@@ -1,0 +1,82 @@
+{
+    "name": "History of Spoons",
+    "root": {
+        "name": "History of Spoons",
+        "children": [
+            {
+                "name": "Ancient spoons",
+                "children": [
+                    {
+                        "name": "Spoons in Ancient Egypt",
+                        "children": [],
+                        "uid": [0, 0]
+                    },
+                    {
+                        "name": "Spoons in Ancient Greece",
+                        "children": [],
+                        "uid": [0, 1]
+                    },
+                    {
+                        "name": "Spoons in the Roman Empire",
+                        "children": [],
+                        "uid": [0, 2]
+                    },
+                    {
+                        "name": "Early spoon materials",
+                        "children": [],
+                        "uid": [0, 3]
+                    }
+                ],
+                "uid": [0]
+            },
+            {
+                "name": "Medieval spoons",
+                "children": [],
+                "uid": [1]
+            },
+            {
+                "name": "Renaissance spoons",
+                "children": [],
+                "uid": [2]
+            },
+            {
+                "name": "Spoons in the 18th century",
+                "children": [],
+                "uid": [3]
+            },
+            {
+                "name": "Spoons in the 19th century",
+                "children": [
+                    {
+                        "name": "Materials used for spoons in the 19th century",
+                        "children": [],
+                        "uid": [4, 0]
+                    },
+                    {
+                        "name": "Manufacturing processes of spoons in the 19th century",
+                        "children": [],
+                        "uid": [4, 1]
+                    },
+                    {
+                        "name": "Styles and designs of spoons in the 19th century",
+                        "children": [],
+                        "uid": [4, 2]
+                    },
+                    {
+                        "name": "The impact of industrialization on spoon production",
+                        "children": [],
+                        "uid": [4, 3]
+                    }
+                ],
+                "uid": [4]
+            },
+            {
+                "name": "Modern spoons",
+                "children": [],
+                "uid": [5]
+            }
+        ],
+        "uid": []
+    },
+    "max_depth": null
+}

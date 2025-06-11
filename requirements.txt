@@ -1,4 +1,5 @@
+pytest
+pytest-asyncio
 pydantic
-dotenv
 black
 google-adk

@@ -1,8 +1,8 @@
-import __init__
+from . import __init__
 import pytest
 import json
 
-from utils.tree import Tree, MaxDepthExceededError
+from tree import Tree, MaxDepthExceededError
 
 class TestTreeClass:
     """Test suite for the Tree class."""
@@ -262,7 +262,7 @@ class TestTreeClass:
             tree["Root"].index = 0
 
     def test_to_from_dict(self):
-        with open('backend/eval/tests/samples/lesson_plan.json', 'r') as f:
+        with open('tests/samples/lesson_plan.json', 'r') as f:
             tree_dict = json.load(f)
         tree = Tree(**tree_dict)
         assert tree.model_dump() == tree_dict

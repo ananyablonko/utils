@@ -1,5 +1,10 @@
-from text import prettify, shorten, clean_hebrew
-from tree import BaseTree, BaseNode
-from logic import most
+import sys, pathlib
+d = pathlib.Path(__file__).resolve().parent
+sys.path.append(str(d))
+sys.path = list(set(sys.path))
 
-__all__ = ["prettify", "shorten", "clean_hebrew", "BaseTree", "BaseNode", "most"]
+from .text import prettify, shorten, clean_hebrew
+from .tree import BaseTree, BaseNode, MaxDepthExceededError
+from .logic import most
+
+__all__ = ["prettify", "shorten", "clean_hebrew", "BaseTree", "BaseNode", "most", "MaxDepthExceededError"]
