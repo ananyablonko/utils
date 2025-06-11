@@ -2,6 +2,8 @@ from . import __init__
 import pytest
 import json
 
+from pathlib import Path
+
 from tree import Tree, MaxDepthExceededError
 
 class TestTreeClass:
@@ -262,11 +264,11 @@ class TestTreeClass:
             tree["Root"].index = 0
 
     def test_to_from_dict(self):
-        with open('tests/samples/lesson_plan.json', 'r') as f:
+        with open(str(Path(__file__).resolve().parent / "samples" / "lesson_plan.json"), 'r') as f:
             tree_dict = json.load(f)
         tree = Tree(**tree_dict)
         assert tree.model_dump() == tree_dict
 
 
 if __name__ == '__main__':
-    TestTreeClass().test_setitem_with_dict()
+    TestTreeClass().test_to_from_dict()

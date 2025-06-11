@@ -92,6 +92,9 @@ class BaseTree[Tn: BaseNode](BaseModel):
 
         yield from _traverse(self.root)
 
+    def __len__(self) -> int:
+        return len(self.__nodes)
+
     def __setitem__(self, node_name: str, node: dict | Tn) -> None:
         """ This method is bug prone. TODO(Anan): make it easy to inherit without introspection shenanigans"""
         insert_argname = list(self.insert.__annotations__.keys())[1]
