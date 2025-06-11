@@ -28,3 +28,21 @@ def prettify(obj):
 def shorten(s: Any, m=250) -> str:
     s = str(s)
     return s if len(s) < m else (s[:(m // 2)] + '...' + s[-(m // 2):])
+
+
+def navigate(json: dict, path: list[str | int]) -> str | None:
+    current = json
+
+    for key in path:
+        match (current, key):
+            case (list() as seq, int() as idx):
+                current = seq[idx]
+            case (dict() as mapping, str() as name):
+                current = mapping[name]
+            case (list() as seq, str() as name):
+                raise ValueError(f"Invalid Path.\n{path=}\n{json=}\nCannot index list with a string.\nlist={seq}\nstring={name}\n")
+            case (dict() as mapping, int() as idx):
+                raise ValueError(f"Invalid Path.\n{path=}\n{json=}\nCannot index object with an integer.\nobject={mapping}\ninterger={idx}\n")
+            case _:
+                return None
+    return str(current)
