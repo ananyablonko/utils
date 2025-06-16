@@ -1,4 +1,4 @@
-from typing import Iterable, Optional, override
+from typing import Iterable, Iterator, Optional, override
 
 from pydantic import Field
 from pathlib import Path
@@ -35,6 +35,10 @@ class ArtifactDict(PersistentDict[str, ArtifactList]):
     @override
     def _save(self, fp: Path, data: Pair[str, ArtifactList]) -> None:
         return  # the ArtifactList already exists
+    
+    @override
+    def items(self) -> Iterator[tuple[str, ArtifactList]]:
+        yield from (self._load(f.parent).to_tuple() for f in self.root.rglob('*') if f != self._meta and f.name == self._meta.name)
 
 
 class FileSystemArtifactService(InMemoryArtifactService):
