@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field, PrivateAttr
 
 from google.adk.agents import BaseAgent
 from google.adk.sessions import Session, InMemorySessionService, DatabaseSessionService
+from google.adk.artifacts import InMemoryArtifactService
+from utils.common.adk.artifacts import FileSystemArtifactService
 from google.adk.runners import Runner
 
 from google.genai import types
@@ -23,12 +25,18 @@ class AgentTester(BaseModel):
     check: Callable = lambda e: e.is_final_response()
     extract: Callable = lambda e: e.content.parts[0].text if e.content else e.actions.state_delta
     db_url: str = ""
+    artifact_path: str = ""
     _session: Optional[Session] = PrivateAttr(default=None)
 
     def model_post_init(self, context: Any) -> None:
         super().model_post_init(context)
         self._s = UserSession(user_id="0", session_id="0")
-        self._r = Runner(agent=self.agent, app_name="0", session_service=DatabaseSessionService(self.db_url) if self.db_url else InMemorySessionService())
+        self._r = Runner(
+            agent=self.agent,
+            app_name="0",
+            session_service=DatabaseSessionService(self.db_url) if self.db_url else InMemorySessionService(),
+            artifact_service=FileSystemArtifactService(self.artifact_path) if self.artifact_path else InMemoryArtifactService(),
+        )
         self._t = asyncio.create_task(self._r.session_service.create_session(app_name=self._r.app_name, state=self.initial_state, **self._s))
     
     def is_done(self):

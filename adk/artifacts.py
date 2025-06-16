@@ -38,4 +38,6 @@ class ArtifactDict(PersistentDict[str, ArtifactList]):
 
 
 class FileSystemArtifactService(InMemoryArtifactService):
-    artifacts: ArtifactDict = Field(default_factory=lambda: ArtifactDict(root=Path('./.data/')))
+    artifacts: ArtifactDict = Field(default_factory=lambda: ArtifactDict(root=Path('.data')))
+    def __init__(self, root: str = ".data"):
+        super().__init__(artifacts=ArtifactDict(root=Path(root)))  # type: ignore
