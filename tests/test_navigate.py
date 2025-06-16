@@ -1,7 +1,7 @@
-from . import __init__
+import __init__
 import pytest
 
-from text import navigate
+from text.json import navigate
 
 
 class TestNavigateSuccess:

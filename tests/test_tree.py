@@ -1,10 +1,10 @@
-from . import __init__
+import __init__
 import pytest
 import json
 
 from pathlib import Path
 
-from tree import Tree, MaxDepthExceededError
+from backend.utils.common.tree.tree import Tree, MaxDepthExceededError
 
 class TestTreeClass:
     """Test suite for the Tree class."""
