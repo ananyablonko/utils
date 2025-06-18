@@ -1,5 +1,6 @@
-from typing import Optional
-from pydantic import BaseModel
+from typing import Optional, Unpack
+from pydantic import BaseModel, Field
+
 
 class SingleValue[T](BaseModel):
     """
@@ -8,19 +9,20 @@ class SingleValue[T](BaseModel):
     """
     value: T
 
-    def __init__(self, value: Optional[T] = None, *args):
-        if len(args) < 1:
-            if value is None:
-                raise ValueError(f"No arg given -> value cannot be None!, got {value=}")
-        else:
-            if len(args) > 1:
-                raise ValueError(f"arg must be a single value, got {args}")
-            if value is not None:
-                raise ValueError(f"arg given - value must be None!, got {value=}")
-            
-            value = args[0]
+    def __init__(self, value: Optional[T] = None, **kwargs):
+        if kwargs == {} and value is None:
+            raise ValueError(f"No value or kwarg given! Input cannot be None!")
+        elif value is not None and kwargs:
+            raise ValueError(f"Specifiy either one of value or a kwarg, not both! {value=}, {kwargs=}")
+        elif len(kwargs) > 1:
+            raise ValueError(f"Too many keyword arguments! {kwargs=}")
+        elif value is None:
+            _, value = kwargs.popitem()
 
         super().__init__(value=value)
 
     def model_dump(self, *args, **kwargs) -> T:
         return self.value
+    
+    def model_dump_json(self, *args, **kwargs) -> str:
+        return str(self.value)
