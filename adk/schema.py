@@ -1,6 +1,11 @@
-from typing import Optional, Unpack
+from typing import Optional, Literal
 from pydantic import BaseModel, Field
 
+class Message(BaseModel):
+    id: str
+    content: str
+    sender: Literal["user", "agent"]
+    timestamp: str
 
 class SingleValue[T](BaseModel):
     """

@@ -10,20 +10,14 @@ from google.adk.events import Event, EventActions
 from google.adk.sessions import Session, BaseSessionService, InMemorySessionService, DatabaseSessionService
 from google.adk.memory import BaseMemoryService, InMemoryMemoryService, VertexAiRagMemoryService
 from google.adk.artifacts import BaseArtifactService, InMemoryArtifactService
-from utils.common.adk.artifacts import FileSystemArtifactService
-
 from google.genai import types
+
+from utils.common.adk.artifacts import FileSystemArtifactService
+from utils.common.adk.schema import Message
 
 class UserSession(TypedDict):
     user_id: str
     session_id: str
-
-
-class Message(TypedDict):
-    id: str
-    content: str
-    sender: Literal["user", "agent"]
-    timestamp: str
 
 
 class RunSession(BaseModel):
@@ -38,7 +32,10 @@ class RunSession(BaseModel):
         self._memory_service: BaseMemoryService = typing.cast(BaseMemoryService, self.app._runner.memory_service)
 
     async def refresh(self) -> None:
-        self.session = typing.cast(Session, await self._session_service.get_session(app_name=self.app.name, **self.us))
+        session = await self._session_service.get_session(app_name=self.app.name, **self.us)
+        if session is None:
+            raise ValueError("Session Invalidated")
+        self.session = session
 
     async def run(self, prompt: str) -> AsyncGenerator:
         async for ev in self.app._runner.run_async(**self.us, new_message=types.Content(role="user", parts=[types.Part(text=prompt)])):
@@ -124,8 +121,8 @@ class AdkApp(BaseModel):
     name: str
     agent: BaseAgent
     initial_state: dict = Field(default_factory=dict)
-    check: Callable = lambda e: e.is_final_response()
-    extract: Callable = lambda e: e.content.parts[0].text if e.content else e.actions.state_delta
+    check: Callable[[Event], bool] = lambda e: e.is_final_response()
+    extract: Callable[[Event], Any] = lambda e: e.content and e.content.parts and e.content.parts[0].text if e.content else e.actions.state_delta
     db_url: str = ""
     artifact_path: str = ""
 
