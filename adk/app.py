@@ -14,6 +14,7 @@ from google.genai import types
 
 from utils.common.adk.artifacts import FileSystemArtifactService
 from utils.common.adk.schema import Message
+from utils.common.text.printing import prettify
 
 class UserSession(TypedDict):
     user_id: str
@@ -44,7 +45,7 @@ class RunSession(BaseModel):
 
         await self.refresh()
         
-    async def update_state(self, new_data: dict[str, Any]) -> None:
+    async def update_state(self, new_data: dict[str, Any], tell_agent: bool = True) -> None:
         event = Event(
             author="user",
             actions=EventActions(
@@ -52,6 +53,8 @@ class RunSession(BaseModel):
             )
         )
         await self._session_service.append_event(self.session, event=event)
+        if tell_agent:
+            await self.append_message(f"State updated:\n{prettify(new_data)}\n")
         await self.refresh()
 
     @property
