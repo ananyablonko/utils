@@ -1,54 +1,56 @@
-import asyncio
-from typing import Any, AsyncGenerator, Callable, Optional, TypedDict
-import typing
-
-from pydantic import BaseModel, Field, PrivateAttr
+from typing import AsyncGenerator, override, Optional, TypedDict
+from pathlib import Path
 
 from google.adk.agents import BaseAgent
-from google.adk.sessions import Session, InMemorySessionService, DatabaseSessionService
-from google.adk.runners import Runner
+from google.adk.agents.invocation_context import InvocationContext
+from google.adk.events import Event
 
 from google.genai import types
 
-from .state import get_output_key
+from .app import AdkApp, RunSession
 
-class UserSession(TypedDict):
-    user_id: str
-    session_id: str
+class ArtifactData(TypedDict):
+    name: str
+    path: Path | str
+    type: str | None
 
-
-class AgentTester(BaseModel):
-    agent: BaseAgent
-    initial_state: Optional[dict] = Field(default_factory=dict)
-    check: Callable = lambda e: e.is_final_response()
-    extract: Callable = lambda e: e.content.parts[0].text if e.content else e.actions.state_delta
-    db_url: str = ""
-    _session: Optional[Session] = PrivateAttr(default=None)
-
-    def model_post_init(self, context: Any) -> None:
-        super().model_post_init(context)
-        self._s = UserSession(user_id="0", session_id="0")
-        self._r = Runner(agent=self.agent, app_name="0", session_service=DatabaseSessionService(self.db_url) if self.db_url else InMemorySessionService())
-        self._t = asyncio.create_task(self._r.session_service.create_session(app_name=self._r.app_name, state=self.initial_state, **self._s))
+async def create_test_session(app: AdkApp, artifacts: Optional[list[ArtifactData]] = None) -> RunSession:
+    artifacts = artifacts or []
+    app.clear_artifacts()
+    session = await app.create_session(user_id="0", session_id="0")
+    for artifact_data in artifacts:
+        with open(artifact_data["path"], 'rb') as f:
+            await session.save_artifact(artifact_data["name"], f.read(), artifact_data["type"])
     
-    def is_done(self):
-        return self._session is not None
+    return session
 
-    async def run(self, prompt: str) -> AsyncGenerator:
-        if not self._t.done():
-            await self._t
 
-        async for ev in self._r.run_async(**self._s, new_message=types.Content(role="user", parts=[types.Part(text=prompt)])):
-            if self.check(ev):
-                yield self.extract(ev)
+class MockAgent(BaseAgent):
+    """A minimal agent that always returns `mock_response` and stores it under `output_key`."""
 
-        self._session = typing.cast(Session, await self._r.session_service.get_session(app_name=self._r.app_name, **self._s))
+    mock_response: str
+    output_key: str
+    model_config = {"arbitrary_types_allowed": True}
 
-    def get_last_output(self):
-        return self.session.state.get(get_output_key(self.agent))
+    def __init__(self, *,
+                 name: str = "mock_agent",
+                 mock_response: str = "Mock Response",
+                 output_key: str = "mock",
+                 **kwargs,
+                 ):
+        super().__init__(
+            name=name,
+            mock_response=mock_response,  # type: ignore
+            output_key=output_key,  # type: ignore
+            **kwargs
+        )
 
-    @property
-    def session(self) -> Session:
-        if self._session is None:
-            raise ValueError("Call is_done to ensure the session was properly returned after the agent ran")
-        return self._session
+    @override
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+
+        yield Event(
+            author=self.name,
+            content=types.Content(role="model", parts=[types.Part(text=self.mock_response)]),
+        )
