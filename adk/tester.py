@@ -52,5 +52,5 @@ class MockAgent(BaseAgent):
 
         yield Event(
             author=self.name,
-            content=types.Content(parts=[types.Part(text=self.mock_response)]),
+            content=types.Content(role="model", parts=[types.Part(text=self.mock_response)]),
         )

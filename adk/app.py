@@ -45,7 +45,10 @@ class RunSession(BaseModel):
 
         await self.refresh()
         
-    async def update_state(self, new_data: dict[str, Any], tell_agent: bool = True) -> None:
+    async def update_state(self, new_data: dict[str, Any], tell_agent: bool = True, message: str = "") -> None:
+        if not new_data:
+            return
+        
         event = Event(
             author="user",
             actions=EventActions(
@@ -54,7 +57,7 @@ class RunSession(BaseModel):
         )
         await self._session_service.append_event(self.session, event=event)
         if tell_agent:
-            await self.append_message(f"State updated:\n{prettify(new_data)}\n")
+            await self.append_message(f"State updated:\n{message + '\n' if message else ""}{prettify(new_data)}\n")
         await self.refresh()
 
     @property

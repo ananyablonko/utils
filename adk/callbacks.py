@@ -14,9 +14,9 @@ def should_run_agent(
     prerequisites = prerequisites or []
     cached = cached or []
 
-    for key in cached:
-        if key in callback_context.state:
-            return types.Content(role="model", parts=[types.Part(text=f"Agent {callback_context.agent_name} skipped: {key} already in state!")])
+    if cached and all(key in callback_context.state for key in cached):
+        return types.Content(role="model", parts=[types.Part(text=f"Agent {callback_context.agent_name} skipped: {cached} already in state!")])
+    
     for key in prerequisites:
         if key not in callback_context.state:
             return types.Content(role="model", parts=[types.Part(text=f"Agent {callback_context.agent_name} skipped: {key} not in state!")])
