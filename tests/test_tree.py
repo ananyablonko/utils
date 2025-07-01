@@ -4,7 +4,7 @@ import json
 
 from pathlib import Path
 
-from backend.utils.common.tree.tree import Tree, MaxDepthExceededError
+from tree.tree import Tree, MaxDepthExceededError
 
 class TestTreeClass:
     """Test suite for the Tree class."""

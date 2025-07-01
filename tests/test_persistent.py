@@ -10,12 +10,14 @@ import hashlib
 from ds import PersistentDict, PersistentList
 
 class TestPersistentDict(PersistentDict[str, Any]):
+    __test__ = False
     """Concrete implementation for testing"""
     def hash(self, key: str) -> str:
         return hashlib.md5(key.encode()).hexdigest()
 
 
 class TestPersistentDictWithSubdirs(PersistentDict[str, Any]):
+    __test__ = False
     """Test implementation that creates subdirectories"""
     def hash(self, key: str) -> str:
         h = hashlib.md5(key.encode()).hexdigest()
