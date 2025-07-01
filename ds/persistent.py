@@ -125,7 +125,7 @@ class PersistentDict[Tk, Tv](PersistentCollection):
         return Pair[Tk, Tv].model_validate(pickle.loads(fp.read_bytes()))
     
     def _save(self, fp: Path, data: Pair[Tk, Tv]) -> None:
-        fp.write_bytes(pickle.dumps(data))
+        fp.write_bytes(pickle.dumps(data.model_dump()))
     
     def _get_file_path(self, key: Tk) -> Path:
         return self.root / self.hash(key)
