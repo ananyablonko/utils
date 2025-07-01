@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from pathlib import Path
 from typing import Any, Optional, Iterator, Iterable
+import shutil
 import typing
 import pickle
 
@@ -15,20 +16,36 @@ class PersistentCollection(BaseModel):
     def model_post_init(self, context) -> None:
         """Initialize root folder and metadata"""
         super().model_post_init(context)
-        
         self._meta = self.root / '.meta'
-        if self.root.exists():
-            return
-        self.root.mkdir(parents=True)
-        self._meta.write_text(self.Metadata(length=0, root=str(self.root)).model_dump_json())
+        self.__filesystem_setup()
 
     def __len__(self) -> int:
         return self.Metadata.model_validate_json(self._meta.read_text()).length
-    
-    def _inc_len(self, reverse: bool = False) -> None:
-        meta = self.Metadata.model_validate_json(self._meta.read_text())
-        meta.length = meta.length + 1 - 2 * reverse
+
+    def clear(self) -> None:
+        shutil.rmtree(self.root)
+        self.__filesystem_setup()
+
+    def delete(self) -> None:
+        shutil.rmtree(self.root)
+
+    def _len_delta(self, delta: int = 1) -> None:
+        meta = self._read_meta()
+        meta.length = meta.length + delta
         self._meta.write_text(meta.model_dump_json())
+
+    def _read_meta(self) -> Metadata:
+        return self.Metadata.model_validate_json(self._meta.read_text())
+    
+    def _write_meta(self, metadata: Metadata) -> None:
+        self._meta.write_text(metadata.model_dump_json())
+
+    def __filesystem_setup(self) -> None:
+        if self.root.exists():
+            return
+        self.root.mkdir(parents=True)
+        self._write_meta(self.Metadata(length=0, root=str(self.root)))
+        
 
 
 class Pair[Tk, Tv](BaseModel):
@@ -48,7 +65,7 @@ class PersistentDict[Tk, Tv](PersistentCollection):
     def __setitem__(self, key: Tk, value: Tv) -> None:
         file_path = self._get_file_path(key)
         if not file_path.exists():
-            self._inc_len()
+            self._len_delta()
             file_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._save(file_path, Pair[Tk, Tv](key=key, value=value))
@@ -77,7 +94,7 @@ class PersistentDict[Tk, Tv](PersistentCollection):
         value = self._load(file_path).value
         file_path.unlink()
 
-        self._inc_len(reverse=True)
+        self._len_delta(-1)
 
         return value
     
@@ -108,7 +125,7 @@ class PersistentDict[Tk, Tv](PersistentCollection):
         return Pair[Tk, Tv].model_validate(pickle.loads(fp.read_bytes()))
     
     def _save(self, fp: Path, data: Pair[Tk, Tv]) -> None:
-        fp.write_bytes(pickle.dumps(data))
+        fp.write_bytes(pickle.dumps(data.model_dump()))
     
     def _get_file_path(self, key: Tk) -> Path:
         return self.root / self.hash(key)
@@ -128,14 +145,14 @@ class PersistentList[T](PersistentCollection):
     
     def append(self, item: T) -> None:
         self._get_file_path(len(self)).write_bytes(pickle.dumps(item))
-        self._inc_len()
+        self._len_delta()
     
     def insert(self, idx: int, item: T) -> None:
         current_len = len(self)
         idx = max(0, current_len + idx) if idx < 0 else min(idx, current_len)
         self._shift_files(idx, 1)
         self._get_file_path(idx).write_bytes(pickle.dumps(item))
-        self._inc_len()
+        self._len_delta()
     
     def pop(self, idx: int = -1) -> T:
         current_len = len(self)
@@ -153,7 +170,7 @@ class PersistentList[T](PersistentCollection):
         file_path.unlink()
         
         self._shift_files(idx + 1, -1)
-        self._inc_len(reverse=True)
+        self._len_delta(-1)
         return item
     
     def remove(self, item: T) -> None:
