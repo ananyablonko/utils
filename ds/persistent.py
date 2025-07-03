@@ -5,6 +5,7 @@ import shutil
 import typing
 import pickle
 
+_undefined = object()
 
 class PersistentCollection(BaseModel):
     class Metadata(BaseModel):
@@ -84,9 +85,9 @@ class PersistentDict[Tk, Tv](PersistentCollection):
     def get(self, key: Tk, defaultvalue: Optional[Tv] = None) -> Optional[Tv]:
         return self[key] if key in self else defaultvalue
     
-    def pop(self, key: Tk, defaultvalue: Optional[Tv] = None) -> Optional[Tv]:
+    def pop(self, key: Tk, defaultvalue: Optional[Tv] = _undefined) -> Optional[Tv]:
         if key not in self:
-            if defaultvalue is not None:
+            if defaultvalue is not _undefined:
                 return defaultvalue
             raise KeyError(key)
         
