@@ -1,8 +1,10 @@
-from typing import Any, AsyncGenerator, Callable, Optional, TypedDict, Unpack, Literal
+from typing import Any, AsyncGenerator, Callable, Optional, TypedDict, Unpack, ClassVar
 import typing
 from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
+
+from aiohttp.client_exceptions import ClientConnectionError
 
 from google.adk.agents import BaseAgent
 from google.adk.runners import Runner
@@ -15,6 +17,7 @@ from google.genai import types
 from .artifacts import FileSystemArtifactService
 from .schema import Message
 from ..text.printing import prettify
+
 
 class UserSession(TypedDict):
     user_id: str
@@ -39,9 +42,20 @@ class RunSession(BaseModel):
         self.session = session
 
     async def run(self, prompt: str) -> AsyncGenerator:
-        async for ev in self.app._runner.run_async(**self.us, new_message=types.Content(role="user", parts=[types.Part(text=prompt)])):
-            if self.app.check(ev):
-                yield self.app.extract(ev)
+        err = None
+        for i in range(1, AdkApp.N_RETRIES + 1):
+            try:
+                async for ev in self.app._runner.run_async(**self.us, new_message=types.Content(role="user", parts=[types.Part(text=prompt)])):
+                    if self.app.check(ev):
+                        yield self.app.extract(ev)
+            except ClientConnectionError as e:
+                err = e
+                yield self.app.extract(Event(author="system", error_code=e.__class__.__name__, error_message=repr(err) + f"\nRetrying... ({i}/{AdkApp.N_RETRIES})"))
+            else:
+                break
+        else:
+            raise OSError from err
+
 
         await self.refresh()
         
@@ -123,14 +137,27 @@ class RunSession(BaseModel):
         )
 
 
+def check_event(ev: Event) -> bool:
+    return ev.partial or ev.is_final_response()
+
+def extract_event(ev: Event) -> Any:
+    if ev.content and ev.content.parts and ev.content.parts[0]:
+        return ev.content.parts[0].text
+    elif ev.error_message:
+        return ev.error_message
+    else:
+        return ev.actions.state_delta
+
 class AdkApp(BaseModel):
     name: str
     agent: BaseAgent
     initial_state: dict = Field(default_factory=dict)
-    check: Callable[[Event], bool] = lambda e: e.is_final_response()
-    extract: Callable[[Event], Any] = lambda e: e.content and e.content.parts and e.content.parts[0].text if e.content else e.actions.state_delta
+    check: Callable[[Event], bool] = check_event
+    extract: Callable[[Event], Any] = extract_event
     db_url: str = ""
     artifact_path: str = ""
+
+    N_RETRIES: ClassVar = 10
 
     def model_post_init(self, context: Any) -> None:
         super().model_post_init(context)
