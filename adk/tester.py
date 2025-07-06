@@ -34,13 +34,10 @@ class MockAgent(BaseAgent):
 
     @override
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-        response = f"{self.name} says: {self.mock_response(ctx) if callable(self.mock_response) else self.mock_response}"
+        response = self.mock_response(ctx) if callable(self.mock_response) else self.mock_response
 
-        if self.output_key:
-            await ctx.session_service.append_event(
-                ctx.session, Event(author=self.name, actions=EventActions(state_delta={self.output_key: response}))
-            )
         yield Event(
             author=self.name,
-            content=types.Content(role="model", parts=[types.Part(text=response)]),
+            actions=EventActions(state_delta={self.output_key: response}) if self.output_key else EventActions(),
+            content=types.Content(role="model", parts=[types.Part(text=f"{self.name} says: {response}")]),
         )
