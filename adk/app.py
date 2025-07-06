@@ -14,9 +14,9 @@ from google.adk.memory import BaseMemoryService, InMemoryMemoryService, VertexAi
 from google.adk.artifacts import BaseArtifactService, InMemoryArtifactService
 from google.genai import types
 
-from utils.common.adk.artifacts import FileSystemArtifactService
-from utils.common.adk.schema import Message
-from utils.common.text.printing import prettify
+from .artifacts import FileSystemArtifactService
+from .schema import Message
+from ..text.printing import prettify
 
 
 class UserSession(TypedDict):

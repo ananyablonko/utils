@@ -6,8 +6,8 @@ from pathlib import Path
 from google.adk.artifacts import InMemoryArtifactService
 from google.genai import types
 
-from utils.common.ds import PersistentDict, PersistentList
-from utils.common.ds.persistent import Pair
+from ..ds import PersistentDict, PersistentList
+from ..ds.persistent import Pair
 
 class ArtifactList(PersistentList[types.Part]):
     def __init__(self, root: Path, items: Optional[Iterable] = None):

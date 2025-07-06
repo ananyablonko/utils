@@ -1,9 +1,9 @@
-from typing import AsyncGenerator, override, Optional, TypedDict
+from typing import AsyncGenerator, override, Optional, TypedDict, Callable
 from pathlib import Path
 
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
-from google.adk.events import Event
+from google.adk.events import Event, EventActions
 
 from google.genai import types
 
@@ -28,29 +28,19 @@ async def create_test_session(app: AdkApp, artifacts: Optional[list[ArtifactData
 class MockAgent(BaseAgent):
     """A minimal agent that always returns `mock_response` and stores it under `output_key`."""
 
-    mock_response: str
-    output_key: str
-    model_config = {"arbitrary_types_allowed": True}
-
-    def __init__(self, *,
-                 name: str = "mock_agent",
-                 mock_response: str = "Mock Response",
-                 output_key: str = "mock",
-                 **kwargs,
-                 ):
-        super().__init__(
-            name=name,
-            mock_response=mock_response,  # type: ignore
-            output_key=output_key,  # type: ignore
-            **kwargs
-        )
+    name: str = "mock_agent"
+    mock_response: str | Callable[[InvocationContext], str] = "Mock Response"
+    output_key: Optional[str] = None
 
     @override
-    async def _run_async_impl(
-        self, ctx: InvocationContext
-    ) -> AsyncGenerator[Event, None]:
+    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+        response = f"{self.name} says: {self.mock_response(ctx) if callable(self.mock_response) else self.mock_response}"
 
+        if self.output_key:
+            await ctx.session_service.append_event(
+                ctx.session, Event(author=self.name, actions=EventActions(state_delta={self.output_key: response}))
+            )
         yield Event(
             author=self.name,
-            content=types.Content(role="model", parts=[types.Part(text=self.mock_response)]),
+            content=types.Content(role="model", parts=[types.Part(text=response)]),
         )
