@@ -73,10 +73,10 @@ class RunSession(BaseModel):
 
         await self.refresh()
 
-    async def live_recv(self, modailties: Optional[list[Literal["audio", "text"]]] = None) -> AsyncGenerator[LiveMessage, None]:
+    async def live_recv(self, modalities: Optional[list[Literal["audio", "text"]]] = None) -> AsyncGenerator[LiveMessage, None]:
         if not self._live_queue:
             raise ValueError("Live capabilities are available using the context manager protocol (with session ...).")
-        run_config = RunConfig(response_modalities=[types.Modality(m) for m in (modailties or ["text"])])
+        run_config = RunConfig(response_modalities=[types.Modality(m) for m in (modalities or ["text"])])
         async for event in self.app._runner.run_live(
             **self.us, live_request_queue=self._live_queue, run_config=run_config
         ):
