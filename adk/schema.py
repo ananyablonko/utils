@@ -11,7 +11,13 @@ class Message(BaseModel):
     timestamp: str = Field(default_factory=datetime.now().isoformat)
     done: bool = False
 
-    
+class LiveMessage(BaseModel):
+    mime_type: str = "text/plain"
+    content: str = ""
+    done: bool = False
+    interrupted: bool = False
+
+
 def dump_agent(agent: BaseAgent) -> dict[str, Any]:
     """ Assume parent field name and sub_agents field name will remain unchanged """
     exc: dict[str, Any] = {'parent_agent': True}

@@ -1,5 +1,8 @@
 from typing import Any, AsyncGenerator, Callable, Optional, TypedDict, Unpack, ClassVar
+from functools import partial
 import typing
+import base64
+
 from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
@@ -7,6 +10,8 @@ from pydantic import BaseModel, Field
 from aiohttp.client_exceptions import ClientConnectionError
 
 from google.adk.agents import BaseAgent
+from google.adk.agents.live_request_queue import LiveRequestQueue
+from google.adk.agents.run_config import RunConfig
 from google.adk.runners import Runner
 from google.adk.events import Event, EventActions
 from google.adk.sessions import Session, BaseSessionService, InMemorySessionService, DatabaseSessionService
@@ -15,7 +20,7 @@ from google.adk.artifacts import BaseArtifactService, InMemoryArtifactService
 from google.genai import types
 
 from .artifacts import FileSystemArtifactService
-from .schema import Message
+from .schema import Message, LiveMessage
 from ..text.printing import prettify
 
 
@@ -56,13 +61,21 @@ class RunSession(BaseModel):
         else:
             raise OSError from err
 
-
         await self.refresh()
-        
+
+    async def stream(self, is_audio: bool = False) -> ...:
+        live_request_queue = LiveRequestQueue()
+        live_events = self.app._runner.run_live(
+            **self.us, live_request_queue=live_request_queue, run_config=RunConfig(response_modalities=["AUDIO" if is_audio else "TEXT"])
+        )
+
+        return self.app._live_agent_to_client(live_events), partial(self.app._live_client_to_agent, live_request_queue=live_request_queue)
+
+
     async def update_state(self, new_data: dict[str, Any], tell_agent: bool = True, message: str = "") -> None:
         if not new_data:
             return
-        
+
         event = Event(
             author="user",
             actions=EventActions(
@@ -77,7 +90,7 @@ class RunSession(BaseModel):
     @property
     def state(self) -> dict[str, Any]:
         return self.session.state
-    
+
     @property
     def history(self) -> list[Message]:
         return [
@@ -110,11 +123,11 @@ class RunSession(BaseModel):
         )
 
         return part.inline_data.data if part and part.inline_data else None
-        
+
     async def save_memory(self) -> None:
         await self._memory_service.add_session_to_memory(self.session)
         await self.refresh()
-        
+
     async def load_memory(self, query: str) -> list[str]:
         memory_contents = await self._memory_service.search_memory(
             app_name=self.app.name,
@@ -204,3 +217,48 @@ class AdkApp(BaseModel):
             self._runner.artifact_service.artifacts.clear()
         else:
             raise NotImplementedError()
+        
+
+    @staticmethod
+    async def _live_agent_to_client(live_events: AsyncGenerator[Event, None]) -> AsyncGenerator[LiveMessage, None]:
+        """Receive agent events"""
+        async for event in live_events:
+            # If the turn complete or interrupted, send it
+            if event.turn_complete or event.interrupted:
+                yield LiveMessage(done=event.turn_complete or False, interrupted=event.interrupted or False)
+                continue
+
+            # Read the Content and its first Part
+            part = ((event.content or types.Content()).parts or [types.Part()])[0]
+            
+            if not part:
+                continue
+
+            # If it's audio, send Base64 encoded audio data
+            is_audio = part.inline_data and part.inline_data.mime_type and part.inline_data.mime_type.startswith("audio/pcm")
+            if is_audio:
+                audio_data = part.inline_data and part.inline_data.data
+                if not audio_data:
+                    continue
+                yield LiveMessage(mime_type="audio/pcm", content=base64.b64encode(audio_data).decode("ascii"))
+                continue
+
+            # If it's text and a parial text, send it
+            if part.text and event.partial:
+                yield LiveMessage(mime_type="text/plain", content=part.text)
+
+    
+    @staticmethod
+    def _live_client_to_agent(message: LiveMessage, live_request_queue: LiveRequestQueue) -> None:
+        """Send message from client to agent"""
+        # Send the message to the agent
+        if message.mime_type == "text/plain":
+            # Send a text message
+            content = types.Content(role="user", parts=[types.Part.from_text(text=message.content)])
+            live_request_queue.send_content(content)
+        elif message.mime_type == "audio/pcm":
+            # Send audio
+            decoded_data = base64.b64decode(message.content)
+            live_request_queue.send_realtime(types.Blob(data=decoded_data, mime_type=message.mime_type))
+        else:
+            raise ValueError(f"Mime type not supported: {message.mime_type}")
