@@ -1,5 +1,4 @@
-from typing import Any, AsyncGenerator, Callable, Optional, TypedDict, Unpack, ClassVar
-from functools import partial
+from typing import Any, AsyncGenerator, Callable, Optional, TypedDict, Unpack, ClassVar, Literal, Self
 import typing
 import base64
 
@@ -39,6 +38,17 @@ class RunSession(BaseModel):
         self._session_service: BaseSessionService = typing.cast(BaseSessionService, self.app._runner.session_service)
         self._artifact_service: BaseArtifactService = typing.cast(BaseArtifactService, self.app._runner.artifact_service)
         self._memory_service: BaseMemoryService = typing.cast(BaseMemoryService, self.app._runner.memory_service)
+        self._live_queue: LiveRequestQueue | None = None
+
+    def __enter__(self) -> Self:
+        self._live_queue = LiveRequestQueue()
+        return self
+    
+    def __exit__(self, *_, **__) -> None:
+        if not self._live_queue:
+            raise ValueError("Live capabilities are available using the context manager protocol (with session ...).")
+        self._live_queue.close()
+        self._live_queue = None
 
     async def refresh(self) -> None:
         session = await self._session_service.get_session(app_name=self.app.name, **self.us)
@@ -63,14 +73,43 @@ class RunSession(BaseModel):
 
         await self.refresh()
 
-    async def stream(self, is_audio: bool = False) -> ...:
-        live_request_queue = LiveRequestQueue()
-        live_events = self.app._runner.run_live(
-            **self.us, live_request_queue=live_request_queue, run_config=RunConfig(response_modalities=["AUDIO" if is_audio else "TEXT"])
-        )
+    async def live_recv(self, modailties: Optional[list[Literal["audio", "text"]]] = None) -> AsyncGenerator[LiveMessage, None]:
+        if not self._live_queue:
+            raise ValueError("Live capabilities are available using the context manager protocol (with session ...).")
+        run_config = RunConfig(response_modalities=[types.Modality(m) for m in (modailties or ["text"])])
+        async for event in self.app._runner.run_live(
+            **self.us, live_request_queue=self._live_queue, run_config=run_config
+        ):
+            if event.turn_complete or event.interrupted:
+                yield LiveMessage(done=event.turn_complete or False, interrupted=event.interrupted or False)
+                continue
 
-        return self.app._live_agent_to_client(live_events), partial(self.app._live_client_to_agent, live_request_queue=live_request_queue)
+            part = ((event.content or types.Content()).parts or [types.Part()])[0]
+            if not part:
+                continue
 
+            is_audio = part.inline_data and part.inline_data.mime_type and part.inline_data.mime_type.startswith("audio/pcm")
+            if is_audio:
+                audio_data = part.inline_data and part.inline_data.data
+                if not audio_data:
+                    continue
+                yield LiveMessage(mime_type="audio/pcm", content=base64.b64encode(audio_data).decode("ascii"))
+                continue
+
+            if part.text and event.partial:
+                yield LiveMessage(mime_type="text/plain", content=part.text)
+
+    def live_send(self, message: LiveMessage) -> None:
+        if not self._live_queue:
+            raise ValueError("Live capabilities are available using the context manager protocol (with session ...).")
+        if message.mime_type == "text/plain":
+            content = types.Content(role="user", parts=[types.Part.from_text(text=message.content)])
+            self._live_queue.send_content(content)
+        elif message.mime_type == "audio/pcm":
+            decoded_data = base64.b64decode(message.content)
+            self._live_queue.send_realtime(types.Blob(data=decoded_data, mime_type=message.mime_type))
+        else:
+            raise ValueError(f"Mime type not supported: {message.mime_type}")
 
     async def update_state(self, new_data: dict[str, Any], tell_agent: bool = True, message: str = "") -> None:
         if not new_data:
@@ -161,6 +200,8 @@ def extract_event(ev: Event) -> Any:
     else:
         return ev.actions.state_delta
 
+
+
 class AdkApp(BaseModel):
     name: str
     agent: BaseAgent
@@ -217,48 +258,3 @@ class AdkApp(BaseModel):
             self._runner.artifact_service.artifacts.clear()
         else:
             raise NotImplementedError()
-        
-
-    @staticmethod
-    async def _live_agent_to_client(live_events: AsyncGenerator[Event, None]) -> AsyncGenerator[LiveMessage, None]:
-        """Receive agent events"""
-        async for event in live_events:
-            # If the turn complete or interrupted, send it
-            if event.turn_complete or event.interrupted:
-                yield LiveMessage(done=event.turn_complete or False, interrupted=event.interrupted or False)
-                continue
-
-            # Read the Content and its first Part
-            part = ((event.content or types.Content()).parts or [types.Part()])[0]
-            
-            if not part:
-                continue
-
-            # If it's audio, send Base64 encoded audio data
-            is_audio = part.inline_data and part.inline_data.mime_type and part.inline_data.mime_type.startswith("audio/pcm")
-            if is_audio:
-                audio_data = part.inline_data and part.inline_data.data
-                if not audio_data:
-                    continue
-                yield LiveMessage(mime_type="audio/pcm", content=base64.b64encode(audio_data).decode("ascii"))
-                continue
-
-            # If it's text and a parial text, send it
-            if part.text and event.partial:
-                yield LiveMessage(mime_type="text/plain", content=part.text)
-
-    
-    @staticmethod
-    def _live_client_to_agent(message: LiveMessage, live_request_queue: LiveRequestQueue) -> None:
-        """Send message from client to agent"""
-        # Send the message to the agent
-        if message.mime_type == "text/plain":
-            # Send a text message
-            content = types.Content(role="user", parts=[types.Part.from_text(text=message.content)])
-            live_request_queue.send_content(content)
-        elif message.mime_type == "audio/pcm":
-            # Send audio
-            decoded_data = base64.b64decode(message.content)
-            live_request_queue.send_realtime(types.Blob(data=decoded_data, mime_type=message.mime_type))
-        else:
-            raise ValueError(f"Mime type not supported: {message.mime_type}")
