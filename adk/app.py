@@ -10,7 +10,7 @@ from aiohttp.client_exceptions import ClientConnectionError
 
 from google.adk.agents import BaseAgent
 from google.adk.agents.live_request_queue import LiveRequestQueue
-from google.adk.agents.run_config import RunConfig
+from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.runners import Runner
 from google.adk.events import Event, EventActions
 from google.adk.sessions import Session, BaseSessionService, InMemorySessionService, DatabaseSessionService
@@ -73,10 +73,20 @@ class RunSession(BaseModel):
 
         await self.refresh()
 
-    async def live_recv(self, modailties: Optional[list[Literal["audio", "text"]]] = None) -> AsyncGenerator[LiveMessage, None]:
+    async def live_recv(self, modalities: Optional[list[Literal["audio", "text"]]] = None) -> AsyncGenerator[LiveMessage, None]:
         if not self._live_queue:
             raise ValueError("Live capabilities are available using the context manager protocol (with session ...).")
-        run_config = RunConfig(response_modalities=[types.Modality(m) for m in (modailties or ["text"])])
+        modalities = modalities or ['text']
+        main_modality = types.Modality("audio" if "audio" in modalities else modalities[0])
+        run_config = RunConfig(
+            response_modalities=[main_modality],
+            streaming_mode=StreamingMode.BIDI,
+            # proactivity=types.ProactivityConfig(proactive_audio=True),
+        )
+        if "text" in modalities and "audio" in modalities:
+            run_config.input_audio_transcription = types.AudioTranscriptionConfig()
+            run_config.output_audio_transcription = types.AudioTranscriptionConfig()
+
         async for event in self.app._runner.run_live(
             **self.us, live_request_queue=self._live_queue, run_config=run_config
         ):
