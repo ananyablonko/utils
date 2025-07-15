@@ -8,6 +8,7 @@ class CircularBuffer:
         self.size = empty_buffer.shape[0]
         self.count: int = 0
         self._space = asyncio.Condition()
+        self._lock = asyncio.Lock()
     
     def read(self, n: int) -> np.ndarray:
         if n > self.count:
@@ -35,10 +36,11 @@ class CircularBuffer:
         self._write(data)
     
     async def try_write(self, data: np.ndarray) -> None:
-        async with self._space:
-            while data.shape[0] > self.size - self.count:
-                await self._space.wait()
-        self._write(data)
+        async with self._lock:
+            async with self._space:
+                while data.shape[0] > self.size - self.count:
+                    await self._space.wait()
+            self._write(data)
     
     def _write(self, data: np.ndarray) -> None:
         n = data.shape[0]
