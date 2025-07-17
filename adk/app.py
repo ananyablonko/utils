@@ -15,7 +15,7 @@ from google.adk.runners import Runner
 from google.adk.events import Event, EventActions
 from google.adk.sessions import Session, BaseSessionService, InMemorySessionService, DatabaseSessionService
 from google.adk.memory import BaseMemoryService, InMemoryMemoryService, VertexAiRagMemoryService
-from google.adk.artifacts import BaseArtifactService, InMemoryArtifactService
+from google.adk.artifacts import BaseArtifactService, InMemoryArtifactService, GcsArtifactService
 from google.genai import types
 
 from .artifacts import FileSystemArtifactService
@@ -74,8 +74,16 @@ class RunSession(BaseModel):
         await self.refresh()
 
     async def live_recv(self, modalities: Optional[list[Literal["audio", "text"]]] = None) -> AsyncGenerator[LiveMessage, None]:
+        """
+        Yields 4 types of messages:
+            1. empty with done/interrupted flag
+            2. Agent audio
+            3. Agent transcription
+            4. User transcription 
+        Does not yield user audio
+        """
         if not self._live_queue:
-            raise ValueError("Live capabilities are available using the context manager protocol (with session ...).")
+            raise ValueError("Live capabilities are only available using the context manager protocol (with session ...).")
         modalities = modalities or ['text']
         main_modality = types.Modality("audio" if "audio" in modalities else modalities[0])
         run_config = RunConfig(
@@ -90,24 +98,7 @@ class RunSession(BaseModel):
         async for event in self.app._runner.run_live(
             **self.us, live_request_queue=self._live_queue, run_config=run_config
         ):
-            if event.turn_complete or event.interrupted:
-                yield LiveMessage(done=event.turn_complete or False, interrupted=event.interrupted or False)
-                continue
-
-            part = ((event.content or types.Content()).parts or [types.Part()])[0]
-            if not part:
-                continue
-
-            is_audio = part.inline_data and part.inline_data.mime_type and part.inline_data.mime_type.startswith("audio/pcm")
-            if is_audio:
-                audio_data = part.inline_data and part.inline_data.data
-                if not audio_data:
-                    continue
-                yield LiveMessage(mime_type="audio/pcm", content=base64.b64encode(audio_data).decode("ascii"))
-                continue
-
-            if part.text and event.partial:
-                yield LiveMessage(mime_type="text/plain", content=part.text)
+            yield self.create_live_msg(event)
 
     def live_send(self, message: LiveMessage) -> None:
         if not self._live_queue:
@@ -120,6 +111,24 @@ class RunSession(BaseModel):
             self._live_queue.send_realtime(types.Blob(data=decoded_data, mime_type=message.mime_type))
         else:
             raise ValueError(f"Mime type not supported: {message.mime_type}")
+
+    @staticmethod
+    def create_live_msg(event: Event) -> LiveMessage:
+        if event.turn_complete or event.interrupted:
+            assert event.content is None, "Event has turn_complete flag AND content, make changes so that this content is not ignored!"
+            return LiveMessage(id=event.id, done=event.turn_complete or False, interrupted=event.interrupted or False)
+        content = event.content or types.Content()
+        part = (content.parts or [types.Part()])[0]
+        inline_data = part.inline_data or types.Blob()
+        is_audio = (inline_data.mime_type or "").startswith("audio")
+        data = base64.b64encode(inline_data.data or b"").decode("ascii") if is_audio else (part.text or "")
+        return LiveMessage(
+            id=event.id,
+            content=data,
+            sender="user" if content.role == "user" else "agent",
+            mime_type="audio/pcm" if is_audio else "text/plain",
+            done=not (is_audio or event.partial)  # audio events are not marked as partial
+        )
 
     async def update_state(self, new_data: dict[str, Any], tell_agent: bool = True, message: str = "") -> None:
         if not new_data:
@@ -220,6 +229,7 @@ class AdkApp(BaseModel):
     extract: Callable[[Event], Any] = extract_event
     db_url: str = ""
     artifact_path: str = ""
+    bucket_name: str = ""
 
     N_RETRIES: ClassVar = 10
 
@@ -229,7 +239,7 @@ class AdkApp(BaseModel):
             agent=self.agent,
             app_name=self.name,
             session_service=DatabaseSessionService(self.db_url) if self.db_url else InMemorySessionService(),
-            artifact_service=FileSystemArtifactService(self.artifact_path) if self.artifact_path else InMemoryArtifactService(),
+            artifact_service=GcsArtifactService(self.bucket_name) if self.bucket_name else FileSystemArtifactService(self.artifact_path) if self.artifact_path else InMemoryArtifactService(),
         )
     
     async def get_session(self, **us: Unpack[UserSession]) -> RunSession:
@@ -263,7 +273,7 @@ class AdkApp(BaseModel):
         )
         return [s.id for s in response.sessions]
     
-    def clear_artifacts(self) -> None:
+    async def clear_artifacts(self) -> None:
         if isinstance(self._runner.artifact_service, (InMemoryArtifactService, FileSystemArtifactService)):
             self._runner.artifact_service.artifacts.clear()
         else:

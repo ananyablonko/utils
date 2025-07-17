@@ -11,11 +11,17 @@ class Message(BaseModel):
     timestamp: str = Field(default_factory=datetime.now().isoformat)
     done: bool = False
 
-class LiveMessage(BaseModel):
+class LiveMessage(Message):
     mime_type: str = "text/plain"
-    content: str = ""
-    done: bool = False
     interrupted: bool = False
+
+    @property
+    def is_text(self) -> bool:
+        return self.mime_type.startswith("text")
+
+    @property
+    def is_audio(self) -> bool:
+        return self.mime_type.startswith("audio")
 
 
 def dump_agent(agent: BaseAgent) -> dict[str, Any]:
