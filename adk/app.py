@@ -163,14 +163,15 @@ class RunSession(BaseModel):
             and e.author != "system"
         ]
 
-    async def save_artifact(self, name: str, artifact: bytes, mime_type: Optional[str] = None) -> None:
-        await self._artifact_service.save_artifact(
+    async def save_artifact(self, name: str, artifact: bytes, mime_type: Optional[str] = None) -> int:
+        version = await self._artifact_service.save_artifact(
             app_name=self.app.name,
             filename=name,
             artifact=types.Part.from_bytes(data=artifact, mime_type=mime_type or "application/octet-stream"),
             **self.us,
         )
         await self.refresh()
+        return version
 
     async def load_artifact(self, name: str, version: Optional[int] = None) -> Optional[bytes]:
         part = await self._artifact_service.load_artifact(
