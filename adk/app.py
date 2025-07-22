@@ -65,7 +65,7 @@ class RunSession(BaseModel):
                         yield self.app.extract(ev)
             except ClientConnectionError as e:
                 err = e
-                yield self.app.extract(Event(author="system", error_code=e.__class__.__name__, error_message=repr(err) + f"\nRetrying... ({i}/{AdkApp.N_RETRIES})"))
+                yield self.app.extract(Event(author="system", error_code=e.__class__.__name__, error_message=f"{repr(err)}\nRetrying... ({i}/{AdkApp.N_RETRIES})"))
             else:
                 break
         else:
@@ -107,27 +107,29 @@ class RunSession(BaseModel):
             content = types.Content(role="user", parts=[types.Part.from_text(text=message.content)])
             self._live_queue.send_content(content)
         elif message.mime_type == "audio/pcm":
-            decoded_data = base64.b64decode(message.content)
-            self._live_queue.send_realtime(types.Blob(data=decoded_data, mime_type=message.mime_type))
+            self._live_queue.send_realtime(types.Blob(data=message.inline_data, mime_type=message.mime_type))
         else:
             raise ValueError(f"Mime type not supported: {message.mime_type}")
 
     @staticmethod
     def create_live_msg(event: Event) -> LiveMessage:
         if event.turn_complete or event.interrupted:
+            # This assert is in case ADK change their API and put 'done'/'interrupted' flags alongside content
             assert event.content is None, "Event has turn_complete flag AND content, make changes so that this content is not ignored!"
             return LiveMessage(id=event.id, done=event.turn_complete or False, interrupted=event.interrupted or False)
         content = event.content or types.Content()
         part = (content.parts or [types.Part()])[0]
         inline_data = part.inline_data or types.Blob()
         is_audio = (inline_data.mime_type or "").startswith("audio")
-        data = base64.b64encode(inline_data.data or b"").decode("ascii") if is_audio else (part.text or "")
+        data = inline_data.data or b""
+        text_content = part.text or ""
         return LiveMessage(
             id=event.id,
-            content=data,
+            content=text_content,
+            inline_data=data,
             sender="user" if content.role == "user" else "agent",
             mime_type="audio/pcm" if is_audio else "text/plain",
-            done=not (is_audio or event.partial)  # audio events are not marked as partial
+            done=not (is_audio or event.partial)  # audio events are not marked as partial in ADK
         )
 
     async def update_state(self, new_data: dict[str, Any], tell_agent: bool = True, message: str = "") -> None:
