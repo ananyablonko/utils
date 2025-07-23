@@ -23,6 +23,9 @@ from .schema import Message, LiveMessage
 from ..text.printing import prettify
 
 
+class InvalidSessionException(Exception):
+    pass
+
 class UserSession(TypedDict):
     user_id: str
     session_id: str
@@ -45,15 +48,14 @@ class RunSession(BaseModel):
         return self
     
     def __exit__(self, *_, **__) -> None:
-        if not self._live_queue:
-            raise ValueError("Live capabilities are available using the context manager protocol (with session ...).")
-        self._live_queue.close()
+        if self._live_queue:
+            self._live_queue.close()
         self._live_queue = None
 
     async def refresh(self) -> None:
         session = await self._session_service.get_session(app_name=self.app.name, **self.us)
         if session is None:
-            raise ValueError("Session Invalidated")
+            raise InvalidSessionException("Session Invalidated")
         self.session = session
 
     async def run(self, prompt: str) -> AsyncGenerator:
@@ -83,7 +85,7 @@ class RunSession(BaseModel):
         Does not yield user audio
         """
         if not self._live_queue:
-            raise ValueError("Live capabilities are only available using the context manager protocol (with session ...).")
+            raise InvalidSessionException("Live capabilities are only available using the context manager protocol (with session ...).")
         modalities = modalities or ['text']
         main_modality = types.Modality("audio" if "audio" in modalities else modalities[0])
         run_config = RunConfig(
