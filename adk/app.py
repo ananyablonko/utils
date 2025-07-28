@@ -1,6 +1,5 @@
 from typing import Any, AsyncGenerator, Callable, Optional, TypedDict, Unpack, ClassVar, Literal, Self
 import typing
-import base64
 
 from datetime import datetime, timezone
 
