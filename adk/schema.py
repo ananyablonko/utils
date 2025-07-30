@@ -8,7 +8,7 @@ class Message(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     content: str = ""
     sender: Literal["user", "agent"] = "agent"
-    timestamp: str = Field(default_factory=datetime.now().isoformat)
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
     done: bool = False
 
 class LiveMessage(Message):
