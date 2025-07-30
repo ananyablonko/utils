@@ -125,6 +125,7 @@ class RunSession(BaseModel):
         text_content = part.text or ""
         return LiveMessage(
             id=event.id,
+            timestamp=datetime.fromtimestamp(event.timestamp).isoformat(),
             content=text_content,
             inline_data=data,
             sender="user" if content.role == "user" else "agent",
@@ -184,7 +185,7 @@ class RunSession(BaseModel):
         )
 
         return part.inline_data.data if part and part.inline_data else None
-
+    
     async def save_memory(self) -> None:
         await self._memory_service.add_session_to_memory(self.session)
         await self.refresh()
@@ -233,6 +234,7 @@ class AdkApp(BaseModel):
     db_url: str = ""
     artifact_path: str = ""
     bucket_name: str = ""
+    plugins: list = Field(default_factory=list)
 
     N_RETRIES: ClassVar = 10
 
@@ -243,6 +245,7 @@ class AdkApp(BaseModel):
             app_name=self.name,
             session_service=DatabaseSessionService(self.db_url) if self.db_url else InMemorySessionService(),
             artifact_service=GcsArtifactService(self.bucket_name) if self.bucket_name else FileSystemArtifactService(self.artifact_path) if self.artifact_path else InMemoryArtifactService(),
+            plugins=self.plugins,
         )
     
     async def get_session(self, **us: Unpack[UserSession]) -> RunSession:
