@@ -16,7 +16,7 @@ class ArtifactData(TypedDict):
 
 async def create_test_session(app: AdkApp, artifacts: Optional[list[ArtifactData]] = None) -> RunSession:
     artifacts = artifacts or []
-    app.clear_artifacts()
+    await app.clear_artifacts()
     session = await app.create_session(user_id="0", session_id="0")
     for artifact_data in artifacts:
         with open(artifact_data["path"], 'rb') as f:
