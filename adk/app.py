@@ -90,6 +90,7 @@ class RunSession(BaseModel):
         run_config = RunConfig(
             response_modalities=[main_modality],
             streaming_mode=StreamingMode.BIDI,
+            proactivity=types.ProactivityConfig(),
         )
         if "text" in modalities and "audio" in modalities:
             run_config.input_audio_transcription = types.AudioTranscriptionConfig()
