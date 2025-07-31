@@ -21,6 +21,29 @@ from .artifacts import FileSystemArtifactService
 from .schema import Message, LiveMessage
 from ..text.printing import prettify
 
+from google.cloud import speech
+
+
+async def transcribe_wav_and_return_text(wav_data: bytes, sample_rate=16000) -> str:
+    try:
+        speech_client = speech.SpeechClient()
+
+        audio = speech.RecognitionAudio(content=wav_data)
+        config = speech.RecognitionConfig(
+            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+            sample_rate_hertz=sample_rate,
+            language_code="he-IL",
+        )
+
+        response = speech_client.recognize(config=config, audio=audio)
+        if response.results:
+            return response.results[0].alternatives[0].transcript.strip()
+        else:
+            return ""
+    except Exception as e:
+        return ""
+
+
 
 class InvalidSessionException(Exception):
     pass
@@ -98,7 +121,7 @@ class RunSession(BaseModel):
         async for event in self.app._runner.run_live(
             **self.us, live_request_queue=self._live_queue, run_config=run_config
         ):
-            yield self.create_live_msg(event)
+            yield await self.create_live_msg(event)
 
     def live_send(self, message: LiveMessage) -> None:
         if not self._live_queue:
@@ -112,26 +135,54 @@ class RunSession(BaseModel):
             raise ValueError(f"Mime type not supported: {message.mime_type}")
 
     @staticmethod
-    def create_live_msg(event: Event) -> LiveMessage:
+    async def create_live_msg(event: Event) -> LiveMessage:
         if event.turn_complete or event.interrupted:
-            # This assert is in case ADK change their API and put 'done'/'interrupted' flags alongside content
-            assert event.content is None, "Event has turn_complete flag AND content, make changes so that this content is not ignored!"
-            return LiveMessage(id=event.id, done=event.turn_complete or False, interrupted=event.interrupted or False)
+        # This assert is in case ADK change their API and put 'done'/'interrupted' flags alongside content
+           assert event.content is None, "Event has turn_complete flag AND content, make changes so that this content is not ignored!"
+           return LiveMessage(id=event.id, done=event.turn_complete or False, interrupted=event.interrupted or False)
+
         content = event.content or types.Content()
         part = (content.parts or [types.Part()])[0]
         inline_data = part.inline_data or types.Blob()
         is_audio = (inline_data.mime_type or "").startswith("audio")
         data = inline_data.data or b""
-        text_content = part.text or ""
+
+    # אם זה אודיו שמגיע מהמשתמש – בצעי תמלול בהתבסס על הפונקציה שלך
+        if content.role == "user" and is_audio:
+          text_content = await transcribe_wav_and_return_text(data)
+        else:
+          text_content = part.text or ""
+
         return LiveMessage(
-            id=event.id,
-            timestamp=datetime.fromtimestamp(event.timestamp).isoformat(),
-            content=text_content,
-            inline_data=data,
-            sender="user" if content.role == "user" else "agent",
-            mime_type="audio/pcm" if is_audio else "text/plain",
-            done=not (is_audio or event.partial)  # audio events are not marked as partial in ADK
-        )
+         id=event.id,
+         timestamp=datetime.fromtimestamp(event.timestamp).isoformat(),
+         content=text_content,
+         inline_data=data,
+         sender="user" if content.role == "user" else "agent",
+         mime_type="audio/pcm" if is_audio else "text/plain",
+         done=not (is_audio or event.partial)  # audio events are not marked as partial in ADK
+      )
+        # if event.turn_complete or event.interrupted:
+        #     # This assert is in case ADK change their API and put 'done'/'interrupted' flags alongside content
+        #     assert event.content is None, "Event has turn_complete flag AND content, make changes so that this content is not ignored!"
+        #     return LiveMessage(id=event.id, done=event.turn_complete or False, interrupted=event.interrupted or False)
+        # content = event.content or types.Content()
+        # part = (content.parts or [types.Part()])[0]
+        # inline_data = part.inline_data or types.Blob()
+        # is_audio = (inline_data.mime_type or "").startswith("audio")
+        # data = inline_data.data or b""
+        # text_content = part.text or ""
+        # return LiveMessage(
+        #     id=event.id,
+        #     timestamp=datetime.fromtimestamp(event.timestamp).isoformat(),
+        #     content=text_content,
+        #     inline_data=data,
+        #     sender="user" if content.role == "user" else "agent",
+        #     mime_type="audio/pcm" if is_audio else "text/plain",
+        #     done=not (is_audio or event.partial)  # audio events are not marked as partial in ADK
+        # )
+        
+    
 
     async def update_state(self, new_data: dict[str, Any], tell_agent: bool = True, message: str = "") -> None:
         if not new_data:
