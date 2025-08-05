@@ -4,3 +4,4 @@ pydantic
 black
 aiohttp
 google-adk
+webrtcvad-wheels
