@@ -187,6 +187,12 @@ class RunSession(BaseModel):
 
         return part.inline_data.data if part and part.inline_data else None
     
+    async def list_artifacts(self) -> list[str]:
+        return await self._artifact_service.list_artifact_keys(app_name=self.app.name, **self.us)
+    
+    async def list_artifact_versions(self, filename: str) -> list[int]:
+        return await self._artifact_service.list_versions(app_name=self.app.name, **self.us, filename=filename)
+    
     async def save_memory(self) -> None:
         await self._memory_service.add_session_to_memory(self.session)
         await self.refresh()
